@@ -1,4 +1,4 @@
-# 🧠 Mental Health Analyzer
+# 🧠 ClinicusAI - AI-Powered Mental Health Analyzer
 
 An AI-powered mental health assessment platform that analyzes text, voice, and facial expressions using MediaPipe to provide insights into mental well-being.
 

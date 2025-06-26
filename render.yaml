@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: mental-health-analyzer
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app/main.py --server.port $PORT --server.address 0.0.0.0
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: HUGGINGFACE_TOKEN
+        sync: false

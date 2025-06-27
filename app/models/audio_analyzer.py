@@ -5,7 +5,9 @@ from transformers import pipeline
 import torch
 import tempfile
 import os
-from typing import Dict, Optional, Tuple, List  # Complete typing imports
+import time  # ADDED - was missing
+from datetime import datetime  # ADDED - was missing
+from typing import Dict, Optional, Tuple, List
 import logging
 import re
 import warnings
@@ -17,15 +19,15 @@ logger = logging.getLogger(__name__)
 
 class AudioAnalyzer:
     def __init__(self):
-        """Initialize audio analysis models with enhanced Hindi support and robust error handling"""
+        """Initialize audio analysis models - English only, optimized for mental health"""
         try:
-            # Enhanced speech-to-text model (using base model for optimal performance)
+            # Enhanced speech-to-text model
             logger.info("Loading Whisper speech-to-text model...")
             self.speech_to_text = pipeline(
                 "automatic-speech-recognition",
-                model="openai/whisper-base",  # Optimal balance of performance and accuracy
+                model="openai/whisper-base",
                 return_timestamps=True,
-                device=0 if torch.cuda.is_available() else -1  # Use GPU if available
+                device=0 if torch.cuda.is_available() else -1
             )
             
             # Emotion recognition model with fallback handling
@@ -41,68 +43,56 @@ class AudioAnalyzer:
                 logger.warning(f"Primary emotion model failed: {e}, using fallback")
                 self.emotion_classifier = None
             
-            # Audio processing parameters (optimized for mental health analysis)
+            # Audio processing parameters
             self.sample_rate = 16000
             self.frame_length = int(0.025 * self.sample_rate)  # 25ms frames
             self.hop_length = int(0.01 * self.sample_rate)     # 10ms hop
-            self.min_audio_duration = 1.0  # Minimum 1 second for analysis
+            self.min_audio_duration = 1.0  # Minimum 1 second
             self.max_audio_duration = 300.0  # Maximum 5 minutes
             
-            # Enhanced mental health keywords for comprehensive analysis
+            # ENHANCED mental health keywords - English only, more comprehensive
             self.mental_health_keywords = {
-                'english': {
-                    'depression': [
-                        'sad', 'hopeless', 'empty', 'worthless', 'tired', 'fatigue', 
-                        'sleep', 'insomnia', 'death', 'suicide', 'end it all', 'can\'t go on',
-                        'no energy', 'exhausted', 'meaningless', 'pointless', 'give up'
-                    ],
-                    'anxiety': [
-                        'anxious', 'worried', 'nervous', 'panic', 'fear', 'scared',
-                        'restless', 'tension', 'heart racing', 'overthinking', 'catastrophic',
-                        'worst case', 'can\'t relax', 'on edge', 'jittery'
-                    ],
-                    'stress': [
-                        'stressed', 'overwhelmed', 'pressure', 'exhausted', 
-                        'burned out', 'can\'t cope', 'too much', 'breaking point',
-                        'overloaded', 'swamped', 'drowning'
-                    ],
-                    'ptsd': [
-                        'flashback', 'nightmare', 'trauma', 'triggered', 'avoidance',
-                        'hypervigilant', 'memories', 'intrusive', 'haunted', 'reliving'
-                    ],
-                    'bipolar': [
-                        'manic', 'mania', 'mood swing', 'high energy', 'euphoric',
-                        'racing thoughts', 'up and down', 'extreme', 'rollercoaster'
-                    ]
-                },
-                'hindi': {
-                    'depression': [
-                        'उदास', 'निराश', 'खाली', 'बेकार', 'दोषी', 'थका हुआ',
-                        'नींद नहीं', 'भूख नहीं', 'ध्यान नहीं', 'मौत', 'आत्महत्या',
-                        'जीना नहीं चाहता', 'कोई उम्मीद नहीं', 'अकेला', 'बेबस', 'हार गया'
-                    ],
-                    'anxiety': [
-                        'चिंतित', 'परेशान', 'घबराया', 'डर', 'बेचैन', 'तनाव',
-                        'दिल की धड़कन', 'पसीना', 'कांपना', 'ज्यादा सोचना',
-                        'आराम नहीं मिलता', 'घबराहट', 'बेकरारी'
-                    ],
-                    'stress': [
-                        'तनावग्रस्त', 'दबाव', 'बोझ', 'थका हुआ', 'परेशान',
-                        'बर्दाश्त नहीं हो रहा', 'बहुत ज्यादा', 'हद से ज्यादा',
-                        'टूट गया', 'हार गया'
-                    ],
-                    'ptsd': [
-                        'बुरी यादें', 'डरावने सपने', 'आघात', 'पुरानी यादें',
-                        'बचना', 'चौकन्ना', 'घबराना', 'अचानक डर जाना', 'परेशान करने वाली यादें'
-                    ],
-                    'bipolar': [
-                        'मूड बदलना', 'उत्साह', 'अचानक खुशी', 'बहुत एनर्जी',
-                        'तेज सोचना', 'ऊपर-नीचे', 'अचानक बदलाव', 'अति उत्साह'
-                    ]
-                }
+                'depression': [
+                    'sad', 'hopeless', 'empty', 'worthless', 'tired', 'fatigue', 
+                    'sleep problems', 'insomnia', 'death', 'suicide', 'end it all', 
+                    'can\'t go on', 'no energy', 'exhausted', 'meaningless', 'pointless', 
+                    'give up', 'hate myself', 'burden', 'better off dead', 'no hope',
+                    'nothing matters', 'feel like dying', 'want to disappear', 
+                    'life is not worth living', 'depressed', 'down', 'low mood'
+                ],
+                'anxiety': [
+                    'anxious', 'worried', 'nervous', 'panic', 'fear', 'scared',
+                    'restless', 'tension', 'heart racing', 'overthinking', 'catastrophic',
+                    'worst case', 'can\'t relax', 'on edge', 'jittery', 'panic attack',
+                    'heart pounding', 'shortness of breath', 'dizzy', 'sweating',
+                    'trembling', 'shaking', 'paranoid', 'hypervigilant', 'constant worry'
+                ],
+                'stress': [
+                    'stressed', 'overwhelmed', 'pressure', 'exhausted', 
+                    'burned out', 'can\'t cope', 'too much', 'breaking point',
+                    'overloaded', 'swamped', 'drowning', 'suffocating', 
+                    'cracking under pressure', 'at my limit', 'falling apart',
+                    'can\'t handle', 'under pressure', 'breaking down'
+                ],
+                'ptsd': [
+                    'flashback', 'nightmare', 'trauma', 'triggered', 'avoidance',
+                    'hypervigilant', 'memories', 'intrusive', 'haunted', 'reliving',
+                    'vivid memories', 'can\'t forget', 'happened again', 'jumpy',
+                    'startled', 'on guard', 'traumatic', 'disturbing memories'
+                ],
+                'self_harm': [
+                    'cut myself', 'hurt myself', 'self harm', 'cutting', 'razor',
+                    'burn myself', 'punish myself', 'deserve pain', 'self injury',
+                    'harm myself', 'cut my arms', 'cut my wrists', 'self mutilation'
+                ],
+                'bipolar': [
+                    'manic', 'mania', 'mood swing', 'high energy', 'euphoric',
+                    'racing thoughts', 'up and down', 'extreme', 'rollercoaster',
+                    'mood changes', 'emotional swings', 'highs and lows'
+                ]
             }
             
-            logger.info("Audio analyzer with enhanced language support initialized successfully")
+            logger.info("Audio analyzer initialized successfully")
             
         except Exception as e:
             logger.error(f"Critical error initializing audio analyzer: {str(e)}")
@@ -269,7 +259,6 @@ class AudioAnalyzer:
     def _calculate_voice_stability(self, audio: np.ndarray, sr: int) -> float:
         """Calculate voice stability - indicator of emotional state"""
         try:
-            # Calculate frame-wise energy with overlap
             frames = librosa.util.frame(audio, frame_length=self.frame_length, 
                                       hop_length=self.hop_length, axis=0)
             energy = np.sum(frames**2, axis=0)
@@ -277,7 +266,6 @@ class AudioAnalyzer:
             if len(energy) <= 1:
                 return 0.5
             
-            # Voice stability is inverse of energy coefficient of variation
             energy_mean = np.mean(energy)
             energy_std = np.std(energy)
             
@@ -296,19 +284,15 @@ class AudioAnalyzer:
     def _estimate_speech_rate(self, audio: np.ndarray, sr: int) -> float:
         """Estimate speech rate in words per minute"""
         try:
-            # Use zero crossing rate and energy to estimate speech activity
             zcr = librosa.feature.zero_crossing_rate(audio, frame_length=self.frame_length, 
                                                    hop_length=self.hop_length)[0]
             
-            # Calculate energy
             frames = librosa.util.frame(audio, frame_length=self.frame_length, 
                                       hop_length=self.hop_length, axis=0)
             energy = np.sum(frames**2, axis=0)
             
-            # Combine ZCR and energy for speech activity detection
             speech_activity = np.mean(zcr) * np.mean(energy)
             
-            # Convert to approximate words per minute (empirical formula)
             duration_minutes = len(audio) / (sr * 60)
             if duration_minutes > 0:
                 estimated_wpm = min((speech_activity * 150) / duration_minutes, 300.0)
@@ -324,7 +308,6 @@ class AudioAnalyzer:
     def _calculate_intensity_variation(self, audio: np.ndarray, sr: int) -> float:
         """Calculate intensity variation - indicator of emotional expression"""
         try:
-            # Calculate RMS energy in overlapping windows
             window_size = int(0.1 * sr)  # 100ms windows
             hop_size = int(0.05 * sr)    # 50ms hop
             
@@ -337,7 +320,6 @@ class AudioAnalyzer:
             if len(intensities) <= 1:
                 return 0.0
             
-            # Calculate coefficient of variation
             intensities = np.array(intensities)
             mean_intensity = np.mean(intensities)
             std_intensity = np.std(intensities)
@@ -356,11 +338,9 @@ class AudioAnalyzer:
     def _calculate_silence_ratio(self, audio: np.ndarray, sr: int) -> float:
         """Calculate ratio of silence to total audio"""
         try:
-            # Calculate energy threshold
             energy = audio**2
             energy_threshold = np.mean(energy) * 0.01  # 1% of mean energy
             
-            # Count silent frames
             silent_samples = np.sum(energy < energy_threshold)
             total_samples = len(audio)
             
@@ -375,24 +355,21 @@ class AudioAnalyzer:
     def detect_voice_activity(self, audio: np.ndarray, sr: int) -> Dict:
         """Enhanced voice activity detection with detailed metrics"""
         try:
-            # Calculate frame energy with improved windowing
             frames = librosa.util.frame(audio, frame_length=self.frame_length, 
                                       hop_length=self.hop_length, axis=0)
             energy = np.sum(frames**2, axis=0)
             
-            # Adaptive threshold using statistical approach
             energy_mean = np.mean(energy)
             energy_std = np.std(energy)
-            energy_threshold = energy_mean + (0.2 * energy_std)  # More sensitive threshold
+            energy_threshold = energy_mean + (0.2 * energy_std)
             
             voice_frames = energy > energy_threshold
             
-            # Calculate comprehensive statistics
             total_frames = len(voice_frames)
             speech_frames = np.sum(voice_frames)
             speech_ratio = speech_frames / total_frames if total_frames > 0 else 0
             
-            # Find speech segments with minimum duration filtering
+            # Find speech segments
             segments = []
             in_speech = False
             start_frame = 0
@@ -408,13 +385,12 @@ class AudioAnalyzer:
                         segments.append((start_frame * self.hop_length / sr, i * self.hop_length / sr))
                     in_speech = False
             
-            # Close final segment if needed
             if in_speech:
                 segment_duration = (len(voice_frames) - start_frame) * self.hop_length / sr
                 if segment_duration >= min_segment_duration:
                     segments.append((start_frame * self.hop_length / sr, len(voice_frames) * self.hop_length / sr))
             
-            # Calculate advanced metrics
+            # Calculate metrics
             if segments:
                 segment_durations = [seg[1] - seg[0] for seg in segments]
                 avg_segment_duration = np.mean(segment_durations)
@@ -453,14 +429,12 @@ class AudioAnalyzer:
             }
     
     def transcribe_audio(self, audio_path: str) -> Dict:
-        """Enhanced transcription with robust error handling and quality assessment"""
+        """Enhanced transcription with robust error handling"""
         try:
             logger.info(f"Starting transcription for: {audio_path}")
             
-            # Use Whisper for transcription with error handling
             result = self.speech_to_text(audio_path, task="transcribe")
             
-            # Parse results based on format
             if isinstance(result, dict):
                 transcription = result.get('text', '').strip()
                 timestamps = result.get('chunks', [])
@@ -471,25 +445,20 @@ class AudioAnalyzer:
                 transcription = str(result).strip()
                 timestamps = []
             
-            # Enhanced language detection
-            detected_language = self._detect_audio_language(transcription)
-            
-            # Calculate transcription quality metrics
+            # Calculate quality metrics
             confidence = self._calculate_transcription_confidence(transcription)
             quality = self._assess_transcription_quality(transcription)
             
-            # Additional metrics
             word_count = len(transcription.split()) if transcription else 0
             char_count = len(transcription) if transcription else 0
             
-            logger.info(f"Transcription completed: {word_count} words, language: {detected_language}")
+            logger.info(f"Transcription completed: {word_count} words")
             
             return {
                 'transcription': transcription,
                 'timestamps': timestamps,
                 'confidence': confidence,
-                'language': detected_language,
-                'contains_hindi': detected_language == 'hi',
+                'language': 'en',  # English only now
                 'word_count': word_count,
                 'character_count': char_count,
                 'transcription_quality': quality,
@@ -503,8 +472,7 @@ class AudioAnalyzer:
                 'transcription': '',
                 'timestamps': [],
                 'confidence': 0.0,
-                'language': 'unknown',
-                'contains_hindi': False,
+                'language': 'en',
                 'word_count': 0,
                 'character_count': 0,
                 'transcription_quality': 'failed',
@@ -512,67 +480,6 @@ class AudioAnalyzer:
                 'processing_successful': False,
                 'error': str(e)
             }
-    
-    def _detect_audio_language(self, text: str) -> str:
-        """Enhanced language detection with improved accuracy"""
-        if not text or len(text.strip()) == 0:
-            return 'unknown'
-        
-        try:
-            text_clean = text.strip().lower()
-            
-            # Check for Hindi characters (Devanagari script)
-            hindi_chars = re.findall(r'[\u0900-\u097F]', text)
-            hindi_char_ratio = len(hindi_chars) / len(text) if len(text) > 0 else 0
-            
-            if hindi_char_ratio > 0.15:  # 15% Hindi characters indicates Hindi
-                return 'hi'
-            
-            # Enhanced romanized Hindi detection
-            hindi_romanized = [
-                'main', 'hai', 'hoon', 'aap', 'kya', 'kaise', 'mera', 'tera', 'uska',
-                'bahut', 'accha', 'bura', 'theek', 'nahin', 'nahi', 'haan', 'ji',
-                'kahan', 'kyun', 'kab', 'kaun', 'kuch', 'sab', 'yeh', 'woh',
-                'aur', 'bhi', 'toh', 'phir', 'abhi', 'yahan', 'wahan', 'kaise',
-                'matlab', 'samjha', 'pata', 'lagta', 'laga', 'raha', 'rahe'
-            ]
-            
-            # Enhanced English word detection
-            english_words = [
-                'the', 'and', 'is', 'in', 'to', 'of', 'a', 'that', 'it', 'with',
-                'for', 'as', 'was', 'on', 'are', 'you', 'have', 'be', 'will', 'can',
-                'this', 'but', 'not', 'or', 'from', 'they', 'we', 'been', 'would', 'there'
-            ]
-            
-            # Count language indicators
-            words = text_clean.split()
-            total_words = len(words)
-            
-            if total_words == 0:
-                return 'unknown'
-            
-            hindi_count = sum(1 for word in words if word in hindi_romanized)
-            english_count = sum(1 for word in words if word in english_words)
-            
-            # Calculate ratios
-            hindi_ratio = hindi_count / total_words
-            english_ratio = english_count / total_words
-            
-            # Decision logic with thresholds
-            if hindi_ratio > 0.2 and hindi_ratio > english_ratio:
-                return 'hi'
-            elif english_ratio > 0.15:
-                return 'en'
-            elif hindi_count > english_count and hindi_count > 1:
-                return 'hi'
-            elif english_count > 2:
-                return 'en'
-            else:
-                return 'unknown'
-                
-        except Exception as e:
-            logger.warning(f"Language detection error: {e}")
-            return 'en'  # Default to English
     
     def _calculate_transcription_confidence(self, transcription: str) -> float:
         """Calculate confidence score for transcription quality"""
@@ -582,7 +489,6 @@ class AudioAnalyzer:
         try:
             confidence = 0.3  # Base confidence
             
-            # Length-based confidence
             word_count = len(transcription.split())
             char_count = len(transcription)
             
@@ -593,8 +499,7 @@ class AudioAnalyzer:
             elif word_count >= 2:
                 confidence += 0.1
             
-            # Character quality assessment
-            meaningful_chars = re.findall(r'[a-zA-Z\u0900-\u097F]', transcription)
+            meaningful_chars = re.findall(r'[a-zA-Z]', transcription)
             if char_count > 0:
                 meaningful_ratio = len(meaningful_chars) / char_count
                 if meaningful_ratio > 0.8:
@@ -602,7 +507,6 @@ class AudioAnalyzer:
                 elif meaningful_ratio > 0.6:
                     confidence += 0.1
             
-            # Repetition penalty (indicates poor transcription)
             words = transcription.split()
             if len(words) > 0:
                 unique_words = set(words)
@@ -613,12 +517,10 @@ class AudioAnalyzer:
                 elif uniqueness_ratio < 0.4:
                     confidence -= 0.2
             
-            # Punctuation and structure bonus
             if re.search(r'[.!?]', transcription):
                 confidence += 0.05
             
-            # Penalty for excessive special characters
-            special_chars = re.findall(r'[^\w\s\u0900-\u097F.!?,-]', transcription)
+            special_chars = re.findall(r'[^\w\s.!?,-]', transcription)
             if len(special_chars) > char_count * 0.1:
                 confidence -= 0.1
             
@@ -629,7 +531,7 @@ class AudioAnalyzer:
             return 0.5
     
     def _assess_transcription_quality(self, transcription: str) -> str:
-        """Assess overall transcription quality with detailed categories"""
+        """Assess overall transcription quality"""
         if not transcription:
             return 'failed'
         
@@ -655,17 +557,14 @@ class AudioAnalyzer:
             
             logger.info("Analyzing emotions using primary model")
             
-            # Use the primary emotion classifier
             result = self.emotion_classifier(audio_path)
             
-            # Process and normalize results
             emotions = {}
             if isinstance(result, list) and len(result) > 0:
                 for item in result:
                     if isinstance(item, dict) and 'label' in item and 'score' in item:
                         emotions[item['label']] = float(item['score'])
             
-            # Validate and get top emotion
             if emotions:
                 top_emotion = max(emotions, key=emotions.get)
                 confidence = emotions[top_emotion]
@@ -704,7 +603,6 @@ class AudioAnalyzer:
             return 0.0
         
         try:
-            # Emotion intensity weights based on mental health relevance
             intensity_weights = {
                 'angry': 1.8, 'fear': 1.7, 'sad': 1.6, 'disgusted': 1.4,
                 'surprised': 1.2, 'happy': 1.0, 'excited': 1.3,
@@ -719,7 +617,6 @@ class AudioAnalyzer:
                 total_intensity += score * weight
                 total_weight += score
             
-            # Normalize by total weight
             if total_weight > 0:
                 intensity = total_intensity / total_weight
             else:
@@ -732,54 +629,111 @@ class AudioAnalyzer:
             return 0.5
     
     def analyze_mental_health_indicators(self, transcription: Dict, audio_features: Dict) -> Dict:
-        """Comprehensive mental health analysis with enhanced detection"""
+        """ENHANCED mental health analysis - FIXED for better detection"""
         try:
             mental_health_score = 0.0
             indicators = []
             detected_conditions = {}
             
             transcription_text = transcription.get('transcription', '').lower()
-            language = transcription.get('language', 'en')
             transcription_quality = transcription.get('transcription_quality', 'poor')
             
-            # Skip analysis if transcription is too poor
+            # Skip if transcription is too poor
             if transcription_quality in ['failed', 'very_poor'] or len(transcription_text.strip()) == 0:
                 logger.warning("Transcription quality too poor for reliable keyword analysis")
                 return self._analyze_audio_only_indicators(audio_features)
             
-            # Select appropriate keyword set
-            keywords_set = self.mental_health_keywords.get('hindi' if language == 'hi' else 'english', 
-                                                         self.mental_health_keywords['english'])
-            
-            # Enhanced keyword analysis with context
-            for condition, keywords in keywords_set.items():
+            # ENHANCED keyword analysis - more aggressive matching
+            for condition, keywords in self.mental_health_keywords.items():
                 found_keywords = []
                 keyword_contexts = []
                 
+                # Direct keyword matching
                 for keyword in keywords:
                     if keyword.lower() in transcription_text:
                         found_keywords.append(keyword)
-                        # Extract context around keyword
                         context = self._extract_keyword_context(transcription_text, keyword)
                         keyword_contexts.append(context)
                         
-                        # Weight keywords by severity
+                        # Enhanced severity weighting
                         severity_weight = self._get_keyword_severity_weight(keyword, condition)
-                        mental_health_score += 0.05 * severity_weight
+                        mental_health_score += 0.1 * severity_weight  # Increased base score
                 
+                # Additional phrase matching for better detection
+                if condition == 'depression':
+                    depression_phrases = [
+                        'feel sad', 'very sad', 'extremely sad', 'so sad', 'really sad',
+                        'feel empty', 'feel hopeless', 'feel worthless', 'want to die',
+                        'life is meaningless', 'no point in living', 'feel depressed',
+                        'hate my life', 'nothing matters', 'feel down', 'low mood'
+                    ]
+                    for phrase in depression_phrases:
+                        if phrase in transcription_text:
+                            found_keywords.append(phrase)
+                            mental_health_score += 0.15
+                
+                elif condition == 'anxiety':
+                    anxiety_phrases = [
+                        'feel anxious', 'very anxious', 'so worried', 'panic attacks',
+                        'anxiety attacks', 'feel nervous', 'heart racing', 'can\'t breathe',
+                        'feel scared', 'constant worry', 'overthinking', 'panic disorder'
+                    ]
+                    for phrase in anxiety_phrases:
+                        if phrase in transcription_text:
+                            found_keywords.append(phrase)
+                            mental_health_score += 0.12
+                
+                elif condition == 'stress':
+                    stress_phrases = [
+                        'feel stressed', 'under pressure', 'too much stress',
+                        'can\'t cope', 'overwhelmed with', 'breaking down',
+                        'burned out', 'at my limit', 'falling apart'
+                    ]
+                    for phrase in stress_phrases:
+                        if phrase in transcription_text:
+                            found_keywords.append(phrase)
+                            mental_health_score += 0.1
+                
+                elif condition == 'self_harm':
+                    self_harm_phrases = [
+                        'hurt myself', 'cut myself', 'harm myself', 'self injury',
+                        'want to cut', 'cutting myself', 'self harm'
+                    ]
+                    for phrase in self_harm_phrases:
+                        if phrase in transcription_text:
+                            found_keywords.append(phrase)
+                            mental_health_score += 0.3  # High weight for self-harm
+                
+                # If matches found, calculate severity
                 if found_keywords:
-                    # Calculate condition severity with context weighting
-                    base_severity = len(found_keywords) / len(keywords)
-                    context_weight = self._analyze_keyword_contexts(keyword_contexts, condition)
+                    # More sensitive scoring - lower threshold
+                    base_severity = min(len(found_keywords) / max(len(keywords), 3), 1.0)
                     
-                    final_severity = min(base_severity * (1 + context_weight), 1.0)
-                    confidence = min(final_severity * 1.5, 1.0)
+                    # Critical keywords boost
+                    critical_keywords = {
+                        'depression': ['suicide', 'kill myself', 'want to die', 'end it all', 'better off dead'],
+                        'anxiety': ['panic attack', 'can\'t breathe', 'heart racing'],
+                        'stress': ['breaking point', 'can\'t cope', 'falling apart'],
+                        'self_harm': ['cut myself', 'hurt myself', 'self harm']
+                    }
+                    
+                    critical_matches = sum(1 for kw in found_keywords 
+                                         if kw in critical_keywords.get(condition, []))
+                    
+                    # Enhanced severity calculation
+                    context_weight = self._analyze_keyword_contexts(keyword_contexts, condition)
+                    final_severity = min(base_severity + (critical_matches * 0.4) + context_weight, 1.0)
+                    
+                    # Ensure minimum severity for any detection
+                    final_severity = max(final_severity, 0.4)  # Increased minimum
+                    confidence = min(final_severity * 120, 100)  # Boosted confidence
                     
                     detected_conditions[condition] = {
-                        'keywords': found_keywords[:5],  # Limit to top 5
+                        'keywords': found_keywords[:5],
                         'severity': float(final_severity),
                         'confidence': float(confidence),
-                        'context_indicators': keyword_contexts[:3]  # Top 3 contexts
+                        'critical_indicators': critical_matches > 0,
+                        'context_indicators': keyword_contexts[:3]
                     }
                     
                     indicators.append(f'{condition.title()} indicators: {", ".join(found_keywords[:3])}')
@@ -789,10 +743,9 @@ class AudioAnalyzer:
             mental_health_score += voice_indicators['score']
             indicators.extend(voice_indicators['indicators'])
             
-            # Merge voice-based conditions with keyword-based ones
+            # Merge voice-based conditions
             for condition, data in voice_indicators['conditions'].items():
                 if condition in detected_conditions:
-                    # Combine scores
                     existing = detected_conditions[condition]
                     combined_severity = (existing['severity'] + data['severity']) / 2
                     combined_confidence = max(existing['confidence'], data['confidence'])
@@ -805,10 +758,10 @@ class AudioAnalyzer:
                 else:
                     detected_conditions[condition] = data
             
-            # Determine primary concern with enhanced logic
+            # Determine primary concern
             primary_concern = self._determine_primary_concern(detected_conditions)
             
-            # Calculate overall analysis confidence
+            # Calculate analysis confidence
             analysis_confidence = self._calculate_enhanced_analysis_confidence(
                 transcription, audio_features, detected_conditions
             )
@@ -818,7 +771,7 @@ class AudioAnalyzer:
                 'indicators': indicators,
                 'detected_conditions': detected_conditions,
                 'primary_concern': primary_concern,
-                'language_analyzed': language,
+                'language_analyzed': 'en',
                 'analysis_confidence': analysis_confidence,
                 'transcription_quality_used': transcription_quality,
                 'analysis_method': 'combined_text_audio'
@@ -849,14 +802,15 @@ class AudioAnalyzer:
     def _get_keyword_severity_weight(self, keyword: str, condition: str) -> float:
         """Get severity weight for specific keywords"""
         high_severity_keywords = {
-            'depression': ['suicide', 'आत्महत्या', 'death', 'मौत', 'end it all', 'worthless'],
-            'anxiety': ['panic', 'घबराहट', 'can\'t breathe', 'heart racing'],
-            'stress': ['breaking point', 'हद से ज्यादा', 'can\'t cope'],
-            'ptsd': ['trauma', 'आघात', 'flashback', 'triggered']
+            'depression': ['suicide', 'kill myself', 'want to die', 'end it all', 'better off dead'],
+            'anxiety': ['panic attack', 'can\'t breathe', 'heart racing'],
+            'stress': ['breaking point', 'can\'t cope', 'falling apart'],
+            'self_harm': ['cut myself', 'hurt myself', 'self harm'],
+            'ptsd': ['trauma', 'flashback', 'triggered']
         }
         
         if keyword.lower() in high_severity_keywords.get(condition, []):
-            return 2.0
+            return 2.5  # Increased weight
         else:
             return 1.0
     
@@ -866,11 +820,10 @@ class AudioAnalyzer:
             if not contexts:
                 return 0.0
             
-            # Context amplifiers that increase severity
             amplifiers = {
-                'depression': ['always', 'never', 'constantly', 'हमेशा', 'कभी नहीं'],
-                'anxiety': ['all the time', 'constantly', 'every day', 'हर वक्त'],
-                'stress': ['too much', 'overwhelming', 'बहुत ज्यादा']
+                'depression': ['always', 'never', 'constantly', 'every day', 'all the time'],
+                'anxiety': ['all the time', 'constantly', 'every day', 'non-stop'],
+                'stress': ['too much', 'overwhelming', 'can\'t handle']
             }
             
             context_weight = 0.0
@@ -879,9 +832,9 @@ class AudioAnalyzer:
             for context in contexts:
                 for amplifier in condition_amplifiers:
                     if amplifier.lower() in context.lower():
-                        context_weight += 0.2
+                        context_weight += 0.3  # Increased weight
             
-            return min(context_weight, 0.5)  # Cap at 50% additional weight
+            return min(context_weight, 0.6)  # Increased cap
             
         except Exception:
             return 0.0
@@ -901,75 +854,75 @@ class AudioAnalyzer:
             intensity_variation = audio_features.get('voice_intensity_variation', 0)
             silence_ratio = audio_features.get('silence_ratio', 0)
             
-            # Depression indicators (low energy, monotone, long silences)
+            # Depression indicators (enhanced detection)
             depression_score = 0.0
             depression_indicators = []
             
-            if pitch_mean < 120 and energy < 0.02:
-                depression_score += 0.4
-                depression_indicators.append('Very low vocal energy and pitch')
+            if pitch_mean < 140 and energy < 0.03:  # Lowered thresholds
+                depression_score += 0.5
+                depression_indicators.append('Low vocal energy and pitch')
                 
-            if voice_stability > 0.8:  # Too stable = monotone
-                depression_score += 0.2
+            if voice_stability > 0.75:  # Lowered threshold for monotone
+                depression_score += 0.3
                 depression_indicators.append('Monotone speech pattern')
                 
-            if silence_ratio > 0.4:
-                depression_score += 0.3
+            if silence_ratio > 0.3:  # Lowered threshold
+                depression_score += 0.4
                 depression_indicators.append('Excessive silence periods')
             
-            if depression_score > 0.2:
+            if depression_score > 0.15:  # Lowered threshold
                 conditions['depression'] = {
                     'severity': min(depression_score, 1.0),
-                    'confidence': min(depression_score * 1.2, 1.0),
+                    'confidence': min(depression_score * 100, 100),
                     'voice_features': depression_indicators,
                     'keywords': []
                 }
                 score += depression_score
                 indicators.extend(depression_indicators)
             
-            # Anxiety indicators (high pitch, unstable voice, rapid speech)
+            # Anxiety indicators (enhanced detection)
             anxiety_score = 0.0
             anxiety_indicators = []
             
-            if pitch_mean > 200:
-                anxiety_score += 0.25
+            if pitch_mean > 180:  # Lowered threshold
+                anxiety_score += 0.3
                 anxiety_indicators.append('Elevated vocal pitch')
                 
-            if voice_stability < 0.3:
-                anxiety_score += 0.3
-                anxiety_indicators.append('Highly unstable voice')
+            if voice_stability < 0.4:  # Increased threshold
+                anxiety_score += 0.4
+                anxiety_indicators.append('Unstable voice')
                 
-            if intensity_variation > 1.5:
-                anxiety_score += 0.2
+            if intensity_variation > 1.2:  # Lowered threshold
+                anxiety_score += 0.3
                 anxiety_indicators.append('High intensity variation')
             
-            if anxiety_score > 0.2:
+            if anxiety_score > 0.15:  # Lowered threshold
                 conditions['anxiety'] = {
                     'severity': min(anxiety_score, 1.0),
-                    'confidence': min(anxiety_score * 1.1, 1.0),
+                    'confidence': min(anxiety_score * 100, 100),
                     'voice_features': anxiety_indicators,
                     'keywords': []
                 }
                 score += anxiety_score
                 indicators.extend(anxiety_indicators)
             
-            # Stress indicators (irregular patterns, long pauses)
+            # Stress indicators (enhanced detection)
             stress_score = 0.0
             stress_indicators = []
             
             avg_pause = audio_features.get('avg_pause_duration', 0)
-            if avg_pause > 2.0:
-                stress_score += 0.2
-                stress_indicators.append('Unusually long pauses between speech')
+            if avg_pause > 1.5:  # Lowered threshold
+                stress_score += 0.3
+                stress_indicators.append('Long pauses between speech')
                 
-            if speech_ratio < 0.3:
-                stress_score += 0.25
-                stress_indicators.append('Minimal speech activity')
+            if speech_ratio < 0.4:  # Increased threshold
+                stress_score += 0.3
+                stress_indicators.append('Limited speech activity')
             
-            if stress_score > 0.15:
+            if stress_score > 0.1:  # Lowered threshold
                 conditions['stress'] = {
                     'severity': min(stress_score, 1.0),
-                    'confidence': min(stress_score * 1.3, 1.0),
+                    'confidence': min(stress_score * 100, 100),
                     'voice_features': stress_indicators,
                     'keywords': []
                 }
@@ -1003,8 +956,8 @@ class AudioAnalyzer:
                 'indicators': voice_analysis['indicators'],
                 'detected_conditions': voice_analysis['conditions'],
                 'primary_concern': primary_concern,
-                'language_analyzed': 'unknown',
-                'analysis_confidence': 0.6,  # Lower confidence for audio-only
+                'language_analyzed': 'en',
+                'analysis_confidence': 0.6,
                 'transcription_quality_used': 'failed',
                 'analysis_method': 'audio_only'
             }
@@ -1013,7 +966,7 @@ class AudioAnalyzer:
             logger.error(f"Audio-only analysis failed: {e}")
             return {
                 'mental_health_score': 0.0, 'indicators': [], 'detected_conditions': {},
-                'primary_concern': 'none_detected', 'language_analyzed': 'unknown',
+                'primary_concern': 'none_detected', 'language_analyzed': 'en',
                 'analysis_confidence': 0.0, 'analysis_method': 'failed'
             }
     
@@ -1023,28 +976,29 @@ class AudioAnalyzer:
             return 'none_detected'
         
         try:
-            # Weight conditions by severity and confidence
             weighted_scores = {}
             for condition, data in detected_conditions.items():
                 severity = data.get('severity', 0)
                 confidence = data.get('confidence', 0)
                 
-                # Priority weights for different conditions
+                # Enhanced priority weights
                 priority_weights = {
-                    'depression': 1.2, 'anxiety': 1.1, 'ptsd': 1.15,
-                    'stress': 1.0, 'bipolar': 1.05
+                    'self_harm': 2.0,  # Highest priority
+                    'depression': 1.5, 
+                    'anxiety': 1.3, 
+                    'ptsd': 1.4,
+                    'stress': 1.1, 
+                    'bipolar': 1.2
                 }
                 
                 priority_weight = priority_weights.get(condition, 1.0)
-                weighted_score = severity * confidence * priority_weight
+                weighted_score = severity * (confidence / 100) * priority_weight
                 weighted_scores[condition] = weighted_score
             
-            # Return condition with highest weighted score
             return max(weighted_scores, key=weighted_scores.get)
             
         except Exception as e:
             logger.warning(f"Primary concern determination failed: {e}")
-            # Fallback to highest severity
             return max(detected_conditions.keys(), 
                       key=lambda x: detected_conditions[x].get('severity', 0))
     
@@ -1071,23 +1025,22 @@ class AudioAnalyzer:
             duration = audio_features.get('duration', 0)
             speech_ratio = audio_features.get('speech_ratio', 0)
             
-            if duration > 15:  # Good duration
+            if duration > 10:  # Good duration
                 confidence += 0.15
             elif duration > 5:
                 confidence += 0.1
             elif duration < 3:
                 confidence -= 0.1
             
-            if speech_ratio > 0.4:
+            if speech_ratio > 0.3:  # Lowered threshold
                 confidence += 0.1
-            elif speech_ratio < 0.2:
+            elif speech_ratio < 0.15:
                 confidence -= 0.05
             
             # Detection consistency bonus
             if len(detected_conditions) > 1:
-                # Multiple consistent indicators increase confidence
                 severities = [data.get('severity', 0) for data in detected_conditions.values()]
-                if max(severities) - min(severities) < 0.3:  # Consistent severities
+                if max(severities) - min(severities) < 0.4:  # Consistent severities
                     confidence += 0.1
             
             return float(np.clip(confidence, 0.0, 1.0))
@@ -1104,25 +1057,23 @@ class AudioAnalyzer:
             audio, sr = self.load_audio(audio_path)
             features = self.extract_audio_features(audio, sr)
             
-            # Rule-based emotion detection with enhanced logic
             emotions = {'neutral': 0.3}
             
-            # Extract key features
             energy = features.get('rms_energy', 0)
             pitch_mean = features.get('pitch_mean', 0)
             voice_stability = features.get('voice_stability', 0.5)
             intensity_variation = features.get('voice_intensity_variation', 0)
             
             # Enhanced heuristics
-            if energy > 0.1 and pitch_mean > 180 and intensity_variation > 1.0:
+            if energy > 0.08 and pitch_mean > 170 and intensity_variation > 0.8:
                 emotions.update({'excited': 0.4, 'happy': 0.3, 'neutral': 0.3})
-            elif energy < 0.03 and pitch_mean < 130:
+            elif energy < 0.04 and pitch_mean < 140:
                 emotions.update({'sad': 0.5, 'tired': 0.3, 'neutral': 0.2})
-            elif pitch_mean > 220 and voice_stability < 0.4:
+            elif pitch_mean > 200 and voice_stability < 0.4:
                 emotions.update({'anxious': 0.4, 'nervous': 0.3, 'neutral': 0.3})
-            elif voice_stability > 0.8 and energy < 0.05:
+            elif voice_stability > 0.8 and energy < 0.06:
                 emotions.update({'calm': 0.4, 'neutral': 0.6})
-            elif intensity_variation > 1.5:
+            elif intensity_variation > 1.3:
                 emotions.update({'angry': 0.3, 'frustrated': 0.3, 'neutral': 0.4})
             else:
                 emotions = {'neutral': 0.6, 'calm': 0.4}
@@ -1156,29 +1107,33 @@ class AudioAnalyzer:
         try:
             risk_score = 0.0
             
-            # Base mental health score (highest weight - 50%)
+            # Base mental health score (highest weight - 60%)
             mental_health_score = mental_health.get('mental_health_score', 0)
-            risk_score += mental_health_score * 0.5
+            risk_score += mental_health_score * 0.6  # Increased weight
             
-            # Detected conditions with severity weighting (30%)
+            # Detected conditions with enhanced severity weighting (25%)
             detected_conditions = mental_health.get('detected_conditions', {})
             condition_risk_weights = {
-                'depression': 0.45, 'anxiety': 0.35, 'stress': 0.25, 
-                'ptsd': 0.4, 'bipolar': 0.3
+                'self_harm': 0.8,  # Highest risk
+                'depression': 0.6, 
+                'anxiety': 0.4, 
+                'stress': 0.3, 
+                'ptsd': 0.5, 
+                'bipolar': 0.4
             }
             
             for condition, data in detected_conditions.items():
                 condition_weight = condition_risk_weights.get(condition, 0.2)
                 severity = data.get('severity', 0)
-                confidence = data.get('confidence', 0)
+                confidence = data.get('confidence', 0) / 100  # Convert to 0-1
                 
                 condition_risk = severity * confidence * condition_weight
-                risk_score += condition_risk * 0.3
+                risk_score += condition_risk * 0.25
             
-            # Emotion-based risk with intensity weighting (15%)
+            # Emotion-based risk with intensity weighting (10%)
             emotion_risk_weights = {
-                'sadness': 0.45, 'anger': 0.35, 'anxiety': 0.4, 'fear': 0.4,
-                'disgust': 0.25, 'surprise': 0.1, 'joy': -0.2, 'happy': -0.2,
+                'sadness': 0.5, 'anger': 0.4, 'anxiety': 0.45, 'fear': 0.45,
+                'disgust': 0.3, 'surprise': 0.1, 'joy': -0.2, 'happy': -0.2,
                 'calm': -0.15, 'neutral': 0.0, 'excited': 0.05
             }
             
@@ -1187,7 +1142,7 @@ class AudioAnalyzer:
             emotional_intensity = emotions.get('emotional_intensity', 0)
             
             emotion_risk = emotion_risk_weights.get(dominant_emotion, 0.0)
-            emotion_contribution = emotion_risk * emotion_confidence * (1 + emotional_intensity) * 0.15
+            emotion_contribution = emotion_risk * emotion_confidence * (1 + emotional_intensity) * 0.1
             risk_score += emotion_contribution
             
             # Voice quality indicators (5%)
@@ -1195,33 +1150,23 @@ class AudioAnalyzer:
             speech_ratio = features.get('speech_ratio', 0.5)
             silence_ratio = features.get('silence_ratio', 0)
             
-            if voice_stability < 0.3 or voice_stability > 0.9:  # Too unstable or too monotone
+            if voice_stability < 0.3 or voice_stability > 0.9:
                 risk_score += 0.02
             
-            if speech_ratio < 0.2:  # Very little speech
+            if speech_ratio < 0.25:  # Lowered threshold
                 risk_score += 0.02
                 
-            if silence_ratio > 0.5:  # Excessive silence
+            if silence_ratio > 0.4:  # Lowered threshold
                 risk_score += 0.01
-            
-            # Language and cultural adjustments
-            language = transcription.get('language', 'en')
-            if language == 'hi':
-                # Cultural sensitivity adjustment for Hindi speakers
-                cultural_adjustment = 0.03
-                risk_score += cultural_adjustment
             
             # Quality-based confidence adjustment
             analysis_confidence = mental_health.get('analysis_confidence', 0.5)
             if analysis_confidence < 0.4:
-                risk_score *= 0.8  # Reduce risk score for low-confidence analysis
+                risk_score *= 0.85  # Reduce risk score for low-confidence analysis
             
-            # Ensure risk score is within valid range
             final_risk_score = np.clip(risk_score, 0.0, 1.0)
             
-            logger.debug(f"Risk calculation: base={mental_health_score:.3f}, "
-                        f"conditions={sum(condition_risk_weights.get(c, 0) * d.get('severity', 0) for c, d in detected_conditions.items()):.3f}, "
-                        f"emotions={emotion_contribution:.3f}, final={final_risk_score:.3f}")
+            logger.debug(f"Risk calculation: base={mental_health_score:.3f}, final={final_risk_score:.3f}")
             
             return float(final_risk_score)
             
@@ -1230,7 +1175,7 @@ class AudioAnalyzer:
             return 0.0
     
     def analyze_audio(self, audio_file_path: str) -> Dict:
-        """Comprehensive audio analysis with enhanced error handling and reporting"""
+        """Comprehensive audio analysis with enhanced error handling"""
         if not os.path.exists(audio_file_path):
             logger.error(f"Audio file not found: {audio_file_path}")
             return self._empty_audio_analysis()
@@ -1289,7 +1234,7 @@ class AudioAnalyzer:
                 'mental_health_analysis': mental_health,
                 'risk_score': risk_score,
                 'primary_concern': mental_health['primary_concern'],
-                'language_detected': transcription.get('language', 'unknown'),
+                'language_detected': 'en',
                 'analysis_confidence': mental_health.get('analysis_confidence', 0.5),
                 'analysis_success': True,
                 'recommendations': recommendations,
@@ -1322,37 +1267,48 @@ class AudioAnalyzer:
             dominant_emotion = emotions.get('dominant_emotion', 'neutral')
             emotional_intensity = emotions.get('emotional_intensity', 0)
             
-            # Condition-specific recommendations
+            # Enhanced condition-specific recommendations
             if primary_concern == 'depression':
                 recommendations.extend([
                     "Consider speaking with a mental health professional about persistent sadness or low mood",
                     "Try to maintain regular social connections and conversations",
-                    "Voice exercises, singing, or reading aloud can help improve vocal energy and mood"
+                    "Voice exercises, singing, or reading aloud can help improve vocal energy and mood",
+                    "Establish a daily routine to provide structure and purpose"
                 ])
             elif primary_concern == 'anxiety':
                 recommendations.extend([
                     "Practice slow, deep breathing exercises to calm your voice and mind",
                     "Try progressive muscle relaxation to reduce physical tension in your voice",
-                    "Consider speaking at a slightly slower pace to help reduce anxiety"
+                    "Consider speaking at a slightly slower pace to help reduce anxiety",
+                    "Limit caffeine intake which can increase anxiety symptoms"
                 ])
             elif primary_concern == 'stress':
                 recommendations.extend([
                     "Take regular breaks during long conversations or phone calls",
                     "Practice vocal relaxation techniques and gentle humming",
-                    "Consider stress management techniques like meditation or mindfulness"
+                    "Consider stress management techniques like meditation or mindfulness",
+                    "Identify and address sources of stress where possible"
+                ])
+            elif primary_concern == 'self_harm':
+                recommendations.extend([
+                    "Please reach out to a mental health professional immediately",
+                    "Contact a crisis helpline: National Suicide Prevention Lifeline 988",
+                    "Remove any items that could be used for self-harm from your immediate environment",
+                    "Stay with trusted friends or family members"
                 ])
             elif primary_concern == 'ptsd':
                 recommendations.extend([
-                    "Consider trauma-informed therapy approaches",
+                    "Consider trauma-informed therapy approaches like EMDR or CPT",
                     "Practice grounding techniques when feeling overwhelmed",
-                    "Develop a support network you can talk to regularly"
+                    "Develop a support network you can talk to regularly",
+                    "Learn about trauma responses to better understand your experiences"
                 ])
             
             # Emotion-specific recommendations
             if dominant_emotion in ['sadness', 'anger'] and emotional_intensity > 1.0:
                 recommendations.append("Consider professional counseling to address intense emotional experiences")
             
-                       # Voice quality recommendations
+            # Voice quality recommendations
             voice_stability = features.get('voice_stability', 0.5)
             speech_ratio = features.get('speech_ratio', 0.5)
             silence_ratio = features.get('silence_ratio', 0)
@@ -1372,7 +1328,8 @@ class AudioAnalyzer:
             recommendations.extend([
                 "Maintain regular sleep schedule to support overall mental health",
                 "Stay connected with friends and family through regular conversations",
-                "Practice mindfulness and self-awareness of your emotional state"
+                "Practice mindfulness and self-awareness of your emotional state",
+                "Consider keeping a mood journal to track patterns"
             ])
             
             return recommendations[:8]  # Limit to top 8 recommendations
@@ -1394,7 +1351,7 @@ class AudioAnalyzer:
                 'voice_stability': 0.5, 'speech_ratio': 0.0
             },
             'transcription': {
-                'transcription': '', 'confidence': 0.0, 'language': 'unknown',
+                'transcription': '', 'confidence': 0.0, 'language': 'en',
                 'word_count': 0, 'transcription_quality': 'failed'
             },
             'emotions': {
@@ -1408,7 +1365,7 @@ class AudioAnalyzer:
             },
             'risk_score': 0.0,
             'primary_concern': 'none_detected',
-            'language_detected': 'unknown',
+            'language_detected': 'en',
             'analysis_confidence': 0.0,
             'analysis_success': False,
             'recommendations': [
@@ -1418,7 +1375,7 @@ class AudioAnalyzer:
             ],
             'processing_time_seconds': 0.0,
             'analysis_timestamp': datetime.now().isoformat(),
-            'model_versions': {
+                        'model_versions': {
                 'speech_to_text': 'unavailable',
                 'emotion_model': 'unavailable'
             }
@@ -1465,22 +1422,11 @@ if __name__ == "__main__":
         vad_results = analyzer.detect_voice_activity(dummy_audio, 16000)
         print(f"   ✅ VAD completed, speech ratio: {vad_results['speech_ratio']:.2f}")
         
-        # Test language detection
-        print("   - Testing language detection...")
-        test_texts = [
-            "I am feeling very sad today",
-            "मुझे बहुत उदासी हो रही है आज"
-        ]
-        
-        for text in test_texts:
-            lang = analyzer._detect_audio_language(text)
-            print(f"   ✅ '{text[:30]}...' -> {lang}")
-        
         print("\n3. Testing Mental Health Analysis...")
         
         # Test mental health keyword detection
         test_transcription = {
-            'transcription': 'I feel hopeless and very sad, cannot sleep well',
+            'transcription': 'I feel hopeless and very sad, cannot sleep well, want to hurt myself',
             'language': 'en',
             'confidence': 0.8,
             'transcription_quality': 'good'
@@ -1520,16 +1466,16 @@ if __name__ == "__main__":
         
         print("\n5. Performance Summary:")
         print("   ✅ All core functions operational")
-        print("   ✅ Multi-language support active")
+        print("   ✅ English-only support active")
         print("   ✅ Mental health detection ready")
         print("   ✅ Emotion analysis functional")
         print("   ✅ Risk assessment operational")
         
         print(f"\n🎯 AUDIO ANALYZER READY FOR PRODUCTION!")
-        print(f"   📊 Features: {len(analyzer.mental_health_keywords['english']['depression'])} depression keywords")
-        print(f"   🌐 Languages: English, Hindi")
+        print(f"   📊 Features: Enhanced keyword detection with {len(analyzer.mental_health_keywords)} condition categories")
+        print(f"   🌐 Language: English optimized")
         print(f"   🤖 Models: Whisper-base, Wav2Vec2 emotion (with fallback)")
-        print(f"   ⚡ Performance: Optimized for real-time analysis")
+        print(f"   ⚡ Performance: Optimized for mental health analysis")
         
     except Exception as e:
         print(f"❌ Test failed: {str(e)}")
@@ -1537,3 +1483,4 @@ if __name__ == "__main__":
         traceback.print_exc()
     
     print("=" * 60)
+

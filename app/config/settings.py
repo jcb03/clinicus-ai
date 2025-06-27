@@ -7,23 +7,20 @@ class Settings(BaseSettings):
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     huggingface_token: Optional[str] = os.getenv("HUGGINGFACE_TOKEN")
     
-    # Model configurations
+    # Model configurations - English only
     text_sentiment_model: str = "cardiffnlp/twitter-roberta-base-sentiment-latest"
     text_emotion_model: str = "j-hartmann/emotion-english-distilroberta-base"
-    multilingual_model: str = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
-    hindi_sentiment_model: str = "l3cube-pune/hindi-sentiment-analysis-roberta"
     audio_emotion_model: str = "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
-    speech_to_text_model: str = "openai/whisper-large-v3"  # Better for Hindi
+    speech_to_text_model: str = "openai/whisper-base"
     
     # Application settings
-    max_file_size: int = int(os.getenv("MAX_FILE_SIZE", 50 * 1024 * 1024))
+    max_file_size: int = int(os.getenv("MAX_FILE_SIZE", 50 * 1024 * 1024))  # 50MB
     supported_audio_formats: List[str] = ["wav", "mp3", "ogg", "m4a", "webm"]
     supported_video_formats: List[str] = ["mp4", "avi", "mov", "mkv", "webm"]
     supported_image_formats: List[str] = ["jpg", "jpeg", "png", "bmp", "webp"]
-    supported_languages: List[str] = ["en", "hi", "es", "fr", "de", "it", "pt", "ru", "ja", "ko", "zh", "ar"]
     
     # OpenAI settings
-    openai_model: str = os.getenv("DEFAULT_MODEL", "gpt-4")  # Better for Hindi
+    openai_model: str = os.getenv("DEFAULT_MODEL", "gpt-3.5-turbo")
     max_tokens: int = int(os.getenv("MAX_TOKENS", 800))
     temperature: float = float(os.getenv("TEMPERATURE", 0.7))
     
@@ -34,11 +31,6 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     
-    # Audio/Video settings
-    audio_sample_rate: int = 16000
-    max_recording_duration: int = 120  # seconds
-    video_frame_rate: int = 30
-    
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -46,6 +38,6 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Validate critical settings
+# Make OpenAI key optional for testing
 if not settings.openai_api_key:
-    raise ValueError("OPENAI_API_KEY must be set in environment variables")
+    print("⚠️ Warning: OPENAI_API_KEY not set. Chat features will be limited.")

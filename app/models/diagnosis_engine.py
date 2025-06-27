@@ -16,7 +16,7 @@ class DiagnosisEngine:
     def __init__(self, openai_api_key: str):
         """Initialize the diagnosis engine with all analyzers"""
         try:
-            # FIXED: Initialize OpenAI client properly
+            # Initialize OpenAI client properly
             self.openai_api_key = openai_api_key
             self.openai_client = OpenAI(api_key=openai_api_key)
             
@@ -25,8 +25,13 @@ class DiagnosisEngine:
             self.audio_analyzer = AudioAnalyzer()
             self.video_analyzer = VideoAnalyzer()
             
-            # Mental health condition definitions with enhanced criteria
+            # FIXED: Enhanced condition definitions INCLUDING self_harm
             self.condition_definitions = {
+                'self_harm': {
+                    'description': 'Thoughts or actions of self-injury or suicide',
+                    'severity_thresholds': {'mild': 0.3, 'moderate': 0.6, 'severe': 0.8},
+                    'keywords': ['kill myself', 'suicide', 'self harm', 'hurt myself']
+                },
                 'depression': {
                     'description': 'Persistent feelings of sadness, hopelessness, and lack of interest in activities',
                     'severity_thresholds': {'mild': 0.3, 'moderate': 0.5, 'severe': 0.7},
@@ -147,37 +152,53 @@ class DiagnosisEngine:
             }
     
     def calculate_condition_scores(self, analysis_results: Dict) -> Dict:
-        """Calculate scores for each mental health condition"""
+        """FIXED: Calculate scores for ALL mental health conditions including self_harm"""
         try:
             condition_scores = {}
             
-            # Initialize all conditions with 0 score
+            # Initialize ALL conditions with 0 score (including self_harm)
             for condition in self.condition_definitions:
                 condition_scores[condition] = 0.0
             
-            # Text-based scoring (weight: 0.5)
+            # CRITICAL: Text-based scoring with DIRECT reading from text analyzer
             if 'text_analysis' in analysis_results:
                 text_data = analysis_results['text_analysis']
                 
-                # Mental health indicators from text
+                # FIXED: Read ALL mental health indicators from text analyzer
                 indicators = text_data.get('mental_health_indicators', {})
-                for condition, data in indicators.items():
-                    if condition in condition_scores:
-                        condition_scores[condition] += data.get('severity_score', 0) * 0.5
+                logger.info(f"Text indicators found: {list(indicators.keys())}")
                 
-                # Sentiment contribution
-                sentiment = text_data.get('sentiment', {})
-                if sentiment.get('dominant') == 'negative':
-                    # Negative sentiment contributes to depression and anxiety
-                    condition_scores['depression'] += sentiment.get('confidence', 0) * 0.2
-                    condition_scores['anxiety'] += sentiment.get('confidence', 0) * 0.15
+                for condition, data in indicators.items():
+                    # CRITICAL: Include self_harm and all other conditions
+                    if condition in self.condition_definitions:
+                        severity_score = data.get('severity_score', 0)
+                        confidence = data.get('confidence', 0) / 100  # Convert to 0-1
+                        
+                        # ENHANCED scoring for critical conditions
+                        if condition == 'self_harm':
+                            condition_scores[condition] = max(severity_score, 0.9)  # Minimum 90% for self-harm
+                            logger.critical(f"🚨 SELF-HARM DETECTED: Score = {condition_scores[condition]}")
+                        else:
+                            condition_scores[condition] = severity_score
+                        
+                        logger.info(f"Condition '{condition}': severity={severity_score}, confidence={confidence}")
+                    else:
+                        # Add unknown conditions to our tracking
+                        condition_scores[condition] = data.get('severity_score', 0)
+                        logger.warning(f"Unknown condition detected: {condition}")
+                
+                # Sentiment contribution (only for depression/anxiety if no self-harm)
+                if condition_scores.get('self_harm', 0) < 0.3:  # Only if no self-harm detected
+                    sentiment = text_data.get('sentiment', {})
+                    if sentiment.get('dominant') == 'negative':
+                        condition_scores['depression'] += sentiment.get('confidence', 0) * 0.2
+                        condition_scores['anxiety'] += sentiment.get('confidence', 0) * 0.15
             
             # Audio-based scoring (weight: 0.3)
             if 'audio_analysis' in analysis_results:
                 audio_data = analysis_results['audio_analysis']
                 mental_health = audio_data.get('mental_health_analysis', {})
                 
-                # Audio mental health indicators
                 detected_conditions = mental_health.get('detected_conditions', {})
                 for condition, data in detected_conditions.items():
                     if condition in condition_scores:
@@ -188,7 +209,6 @@ class DiagnosisEngine:
                 video_data = analysis_results['video_analysis']
                 dominant_emotion = video_data.get('dominant_emotion', '').lower()
                 
-                # Map facial emotions to conditions
                 emotion_condition_mapping = {
                     'sad': ['depression'],
                     'angry': ['stress'],
@@ -206,6 +226,7 @@ class DiagnosisEngine:
             for condition in condition_scores:
                 condition_scores[condition] = min(condition_scores[condition], 1.0)
             
+            logger.info(f"Final condition scores: {condition_scores}")
             return condition_scores
             
         except Exception as e:
@@ -213,7 +234,7 @@ class DiagnosisEngine:
             return {condition: 0.0 for condition in self.condition_definitions}
     
     def generate_diagnosis(self, analysis_results: Dict) -> Dict:
-        """Generate comprehensive diagnosis from all analysis results"""
+        """FIXED: Generate comprehensive diagnosis including self_harm detection"""
         try:
             # Calculate condition scores
             condition_scores = self.calculate_condition_scores(analysis_results)
@@ -221,33 +242,36 @@ class DiagnosisEngine:
             # Combine emotion analysis
             emotion_analysis = self.combine_emotion_scores(analysis_results)
             
-            # Get top conditions (minimum threshold: 0.1)
+            # FIXED: Get top conditions with LOWER threshold for self_harm
             top_conditions = []
             for condition, score in condition_scores.items():
-                if score > 0.1:  # Only include meaningful scores
+                # CRITICAL: Different thresholds for different conditions
+                min_threshold = 0.05 if condition == 'self_harm' else 0.1
+                
+                if score > min_threshold:
                     severity = self._determine_severity(condition, score)
                     top_conditions.append({
                         'condition': condition,
                         'score': score,
                         'confidence_percentage': int(score * 100),
                         'severity': severity,
-                        'description': self.condition_definitions[condition]['description']
+                        'description': self.condition_definitions.get(condition, {}).get('description', 'Mental health concern')
                     })
             
-            # Sort by score
-            top_conditions.sort(key=lambda x: x['score'], reverse=True)
+            # CRITICAL: Sort by score with self_harm priority
+            top_conditions.sort(key=lambda x: (x['condition'] == 'self_harm', x['score']), reverse=True)
             
             # Generate AI analysis
             ai_analysis = self._generate_ai_diagnosis(analysis_results, top_conditions, emotion_analysis)
             
-            # Determine overall risk level
+            # FIXED: Determine overall risk level with self_harm priority
             overall_risk = self._determine_overall_risk(condition_scores)
             
             # Generate recommendations
             recommendations = self._generate_recommendations(top_conditions)
             
             return {
-                'top_conditions': top_conditions[:5],  # Top 5 conditions
+                'top_conditions': top_conditions[:5],
                 'emotion_analysis': emotion_analysis,
                 'ai_analysis': ai_analysis,
                 'overall_risk_level': overall_risk,
@@ -260,12 +284,28 @@ class DiagnosisEngine:
             return self._default_diagnosis()
     
     def _generate_ai_diagnosis(self, analysis_results: Dict, top_conditions: List, emotion_analysis: Dict) -> str:
-        """Generate AI-powered diagnosis explanation - FIXED: Use new OpenAI API"""
+        """Generate AI-powered diagnosis explanation"""
         try:
             # Prepare context for AI
             context = self._prepare_ai_context(analysis_results, top_conditions, emotion_analysis)
             
-            prompt = f"""Based on the following mental health analysis data, provide a compassionate, professional assessment:
+            # CRITICAL: Enhanced prompt for self-harm detection
+            crisis_detected = any(cond['condition'] == 'self_harm' for cond in top_conditions)
+            
+            if crisis_detected:
+                prompt = f"""CRISIS SITUATION DETECTED - Based on the following mental health analysis, provide an IMMEDIATE crisis response:
+
+{context}
+
+This person has expressed thoughts of self-harm or suicide. Provide:
+1. Immediate concern and validation
+2. Strong encouragement to seek emergency help
+3. Crisis resources and hotlines
+4. Supportive but urgent guidance
+
+Keep response under 150 words and prioritize safety."""
+            else:
+                prompt = f"""Based on the following mental health analysis data, provide a compassionate, professional assessment:
 
 {context}
 
@@ -275,16 +315,14 @@ Please provide:
 3. Supportive guidance and encouragement
 4. Clear recommendation to consult with a mental health professional
 
-Keep the response warm, non-judgmental, and under 200 words. Avoid medical diagnoses.
-            """
+Keep the response warm, non-judgmental, and under 200 words. Avoid medical diagnoses."""
             
-            # FIXED: Use new OpenAI API syntax
             response = self.openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {
                         "role": "system", 
-                        "content": "You are a compassionate mental health assessment AI that provides supportive, professional insights while always encouraging professional consultation."
+                        "content": "You are a compassionate mental health assessment AI that provides supportive, professional insights while always encouraging professional consultation. For crisis situations, prioritize immediate safety."
                     },
                     {"role": "user", "content": prompt}
                 ],
@@ -309,7 +347,7 @@ Keep the response warm, non-judgmental, and under 200 words. Avoid medical diagn
             
             if text_data.get('mental_health_indicators'):
                 indicators = list(text_data['mental_health_indicators'].keys())
-                context_parts.append(f"Mental health keywords found: {', '.join(indicators)}")
+                context_parts.append(f"Mental health indicators found: {', '.join(indicators)}")
         
         # Audio analysis context
         if analysis_results.get('audio_analysis'):
@@ -355,8 +393,19 @@ Keep the response warm, non-judgmental, and under 200 words. Avoid medical diagn
             return 'minimal'
     
     def _determine_overall_risk(self, condition_scores: Dict) -> str:
-        """Determine overall risk level"""
-        max_score = max(condition_scores.values()) if condition_scores else 0
+        """FIXED: Determine overall risk level with self_harm priority"""
+        if not condition_scores:
+            return 'minimal'
+        
+        # CRITICAL: Self-harm gets immediate high risk
+        self_harm_score = condition_scores.get('self_harm', 0)
+        if self_harm_score > 0.3:
+            return 'high'
+        elif self_harm_score > 0.1:
+            return 'moderate'
+        
+        # Regular risk assessment for other conditions
+        max_score = max(condition_scores.values())
         
         if max_score >= 0.7:
             return 'high'
@@ -368,7 +417,23 @@ Keep the response warm, non-judgmental, and under 200 words. Avoid medical diagn
             return 'minimal'
     
     def _generate_recommendations(self, top_conditions: List) -> List[str]:
-        """Generate recommendations based on top conditions"""
+        """FIXED: Generate recommendations with self_harm priority"""
+        recommendations = []
+        
+        # CRITICAL: Self-harm gets immediate crisis recommendations
+        has_self_harm = any(cond['condition'] == 'self_harm' for cond in top_conditions)
+        
+        if has_self_harm:
+            recommendations.extend([
+                "🚨 IMMEDIATE: Contact crisis helpline - National Suicide Prevention Lifeline: 988",
+                "🚨 URGENT: Go to nearest emergency room if in immediate danger",
+                "🚨 CRITICAL: Remove any means of self-harm from your environment",
+                "🚨 SUPPORT: Stay with trusted friends or family members",
+                "🚨 PROFESSIONAL: Contact a mental health professional immediately"
+            ])
+            return recommendations[:5]  # Return only crisis recommendations
+        
+        # Regular recommendations for other conditions
         recommendations = [
             "Consider speaking with a mental health professional for a comprehensive evaluation",
             "Practice regular self-care activities that you enjoy",
@@ -412,42 +477,57 @@ Keep the response warm, non-judgmental, and under 200 words. Avoid medical diagn
             if condition in condition_specific_recs:
                 recommendations.extend(condition_specific_recs[condition][:2])
         
-        return recommendations[:7]  # Limit to 7 recommendations
+        return recommendations[:7]
     
     def determine_current_mood(self, analysis_results: Dict) -> Dict:
-        """Determine current mood from analysis"""
-        emotion_analysis = self.combine_emotion_scores(analysis_results)
-        dominant_emotion = emotion_analysis['dominant_emotion']
-        confidence = emotion_analysis['confidence']
-        
-        # Map emotions to mood categories
-        mood_mapping = {
-            'joy': 'Happy',
-            'happiness': 'Happy',
-            'happy': 'Happy',
-            'sadness': 'Sad',
-            'sad': 'Sad',
-            'anger': 'Angry',
-            'angry': 'Angry',
-            'fear': 'Anxious',
-            'anxiety': 'Anxious',
-            'surprise': 'Surprised',
-            'surprised': 'Surprised',
-            'disgust': 'Disgusted',
-            'neutral': 'Neutral',
-            'calm': 'Calm',
-            'excited': 'Excited',
-            'tired': 'Tired'
-        }
-        
-        mood = mood_mapping.get(dominant_emotion.lower(), 'Neutral')
-        
-        return {
-            'current_mood': mood,
-            'confidence': confidence,
-            'dominant_emotion': dominant_emotion,
-            'mood_description': self._get_mood_description(mood, confidence)
-        }
+        """FIXED: Determine current mood with self_harm override"""
+        try:
+            # CRITICAL: Check for self-harm first
+            text_analysis = analysis_results.get('individual_analyses', {}).get('text_analysis', {})
+            if text_analysis:
+                mental_health_indicators = text_analysis.get('mental_health_indicators', {})
+                if 'self_harm' in mental_health_indicators:
+                    return {
+                        'current_mood': 'Crisis',
+                        'confidence': mental_health_indicators['self_harm']['confidence'] / 100,
+                        'dominant_emotion': 'sadness',
+                        'mood_description': 'CRISIS STATE - Immediate help needed'
+                    }
+            
+            # Regular mood determination
+            emotion_analysis = self.combine_emotion_scores(analysis_results)
+            dominant_emotion = emotion_analysis['dominant_emotion']
+            confidence = emotion_analysis['confidence']
+            
+            # Map emotions to mood categories
+            mood_mapping = {
+                'joy': 'Happy', 'happiness': 'Happy', 'happy': 'Happy',
+                'sadness': 'Sad', 'sad': 'Sad',
+                'anger': 'Angry', 'angry': 'Angry',
+                'fear': 'Anxious', 'anxiety': 'Anxious',
+                'surprise': 'Surprised', 'surprised': 'Surprised',
+                'disgust': 'Disgusted',
+                'neutral': 'Neutral', 'calm': 'Calm',
+                'excited': 'Excited', 'tired': 'Tired'
+            }
+            
+            mood = mood_mapping.get(dominant_emotion.lower(), 'Neutral')
+            
+            return {
+                'current_mood': mood,
+                'confidence': confidence,
+                'dominant_emotion': dominant_emotion,
+                'mood_description': self._get_mood_description(mood, confidence)
+            }
+            
+        except Exception as e:
+            logger.error(f"Mood determination failed: {str(e)}")
+            return {
+                'current_mood': 'Neutral',
+                'confidence': 1.0,
+                'dominant_emotion': 'neutral',
+                'mood_description': 'Unable to determine mood'
+            }
     
     def _get_mood_description(self, mood: str, confidence: float) -> str:
         """Get description for current mood"""
@@ -461,7 +541,8 @@ Keep the response warm, non-judgmental, and under 200 words. Avoid medical diagn
             'Neutral': 'In a balanced, calm state',
             'Calm': 'Feeling peaceful and relaxed',
             'Excited': 'Feeling energetic and enthusiastic',
-            'Tired': 'Feeling fatigued or weary'
+            'Tired': 'Feeling fatigued or weary',
+            'Crisis': 'In a mental health crisis requiring immediate attention'
         }
         
         base_description = descriptions.get(mood, 'Current emotional state')
@@ -473,7 +554,7 @@ Keep the response warm, non-judgmental, and under 200 words. Avoid medical diagn
                              text: Optional[str] = None,
                              audio_file: Optional[str] = None,
                              video_frame: Optional[np.ndarray] = None) -> Dict:
-        """Perform comprehensive mental health analysis"""
+        """FIXED: Perform comprehensive mental health analysis with self_harm priority"""
         try:
             # Analyze all inputs
             analysis_results = self.analyze_all_inputs(text, audio_file, video_frame)
@@ -484,16 +565,31 @@ Keep the response warm, non-judgmental, and under 200 words. Avoid medical diagn
             # Determine mood
             mood = self.determine_current_mood(analysis_results)
             
+            # FIXED: Enhanced summary with self_harm priority
+            primary_concern = 'None detected'
+            confidence = 0
+            
+            if diagnosis['top_conditions']:
+                # Check for self_harm first
+                self_harm_condition = next((cond for cond in diagnosis['top_conditions'] if cond['condition'] == 'self_harm'), None)
+                
+                if self_harm_condition:
+                    primary_concern = 'self_harm'
+                    confidence = self_harm_condition['confidence_percentage']
+                else:
+                    primary_concern = diagnosis['top_conditions'][0]['condition']
+                    confidence = diagnosis['top_conditions'][0]['confidence_percentage']
+            
             return {
                 'individual_analyses': analysis_results,
                 'diagnosis': diagnosis,
                 'current_mood': mood,
                 'summary': {
-                    'primary_concern': diagnosis['top_conditions'][0]['condition'] if diagnosis['top_conditions'] else 'None detected',
-                    'confidence': diagnosis['top_conditions'][0]['confidence_percentage'] if diagnosis['top_conditions'] else 0,
+                    'primary_concern': primary_concern,
+                    'confidence': confidence,
                     'mood': mood['current_mood'],
                     'risk_level': diagnosis['overall_risk_level'],
-                    'needs_attention': diagnosis['overall_risk_level'] in ['moderate', 'high']
+                    'needs_attention': diagnosis['overall_risk_level'] in ['moderate', 'high'] or primary_concern == 'self_harm'
                 },
                 'timestamp': datetime.now().isoformat(),
                 'analysis_successful': True

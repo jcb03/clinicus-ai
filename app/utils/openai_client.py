@@ -1,4 +1,5 @@
 import openai
+from openai import OpenAI
 import logging
 from typing import Dict, List, Optional
 import time
@@ -9,9 +10,9 @@ logger = logging.getLogger(__name__)
 
 class OpenAIClient:
     def __init__(self, api_key: str = None):
-        """Initialize OpenAI client"""
+        """Initialize OpenAI client with new API"""
         self.api_key = api_key or settings.openai_api_key
-        openai.api_key = self.api_key
+        self.client = OpenAI(api_key=self.api_key)
         
         # Default parameters
         self.default_model = settings.openai_model
@@ -37,16 +38,18 @@ class OpenAIClient:
                                  user_message: str,
                                  conversation_context: str = "",
                                  analysis_results: Optional[Dict] = None,
-                                 mood: str = "neutral") -> str:
-        """Generate therapist response based on user input and context"""
+                                 mood: str = "neutral",
+                                 language: str = "en") -> str:  # Added language parameter
+        """Generate therapist response with language support"""
         try:
             self._rate_limit()
             
             # Build context-aware prompt
-            system_prompt = self._build_therapist_system_prompt(analysis_results, mood)
-            user_prompt = self._build_therapist_user_prompt(user_message, conversation_context, analysis_results)
+            system_prompt = self._build_therapist_system_prompt(analysis_results, mood, language)
+            user_prompt = self._build_therapist_user_prompt(user_message, conversation_context, analysis_results, language)
             
-            response = openai.ChatCompletion.create(
+            # Use new OpenAI API syntax
+            response = self.client.chat.completions.create(
                 model=self.default_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -60,21 +63,33 @@ class OpenAIClient:
             
             return response.choices[0].message.content.strip()
             
-        except openai.error.RateLimitError:
-            logger.warning("OpenAI rate limit exceeded")
-            return "I need a moment to process. Please try again shortly."
-        
-        except openai.error.AuthenticationError:
-            logger.error("OpenAI authentication failed")
-            return "I'm having trouble connecting right now. Please check your settings."
-        
         except Exception as e:
             logger.error(f"OpenAI request failed: {str(e)}")
-            return "I'm sorry, I'm having difficulty responding right now. How are you feeling, and is there anything specific you'd like to talk about?"
+            if language == 'hi':
+                return "मुझे खेद है, मुझे अभी जवाब देने में परेशानी हो रही है। आप कैसा महसूस कर रहे हैं, और क्या कोई विशेष बात है जिसके बारे में आप बात करना चाहते हैं?"
+            else:
+                return "I'm sorry, I'm having difficulty responding right now. How are you feeling, and is there anything specific you'd like to talk about?"
     
-    def _build_therapist_system_prompt(self, analysis_results: Optional[Dict], mood: str) -> str:
-        """Build system prompt for therapist responses"""
-        base_prompt = """You are a compassionate, professional AI therapist assistant. Your role is to:
+    def _build_therapist_system_prompt(self, analysis_results: Optional[Dict], mood: str, language: str) -> str:
+        """Build system prompt for therapist responses with language support"""
+        if language == 'hi':
+            base_prompt = """आप एक करुणामय, पेशेवर AI थेरेपिस्ट सहायक हैं। आपकी भूमिका है:
+
+1. सहानुभूतिपूर्ण, सहायक प्रतिक्रियाएं प्रदान करना
+2. उपयोगकर्ताओं को अपनी भावनाओं को समझने में मदद करने के लिए विचारशील प्रश्न पूछना
+3. कोमल मार्गदर्शन और मुकाबला रणनीतियां प्रदान करना
+4. गंभीर चिंताओं के लिए हमेशा पेशेवर मदद को प्रोत्साहित करना
+5. उचित सीमाएं बनाए रखना
+6. कभी भी निदान न करना या चिकित्सा सलाह न देना
+
+दिशानिर्देश:
+- गर्मजोशी, समझदार और गैर-न्यायिक रहें
+- अपनी प्रतिक्रियाओं में सक्रिय सुनने की तकनीकों का उपयोग करें
+- उपयोगकर्ता की भावनाओं को मान्य करें
+- उपयुक्त होने पर स्वस्थ मुकाबला तंत्र सुझाएं
+- यदि उपयोगकर्ता आत्म-हानि के विचार व्यक्त करता है, तो तुरंत आपातकालीन सहायता लेने के लिए प्रोत्साहित करें"""
+        else:
+            base_prompt = """You are a compassionate, professional AI therapist assistant. Your role is to:
 
 1. Provide empathetic, supportive responses
 2. Ask thoughtful questions to help users explore their feelings
@@ -96,40 +111,84 @@ Guidelines:
             primary_concern = analysis_results.get('summary', {}).get('primary_concern', 'None')
             
             if risk_level in ['moderate', 'high']:
-                base_prompt += f"\n\nIMPORTANT: The user's recent analysis suggests {risk_level} risk level with primary concern: {primary_concern}. Be extra supportive and gently encourage professional consultation."
+                if language == 'hi':
+                    base_prompt += f"\n\nमहत्वपूर्ण: उपयोगकर्ता के हाल के विश्लेषण से {risk_level} जोखिम स्तर का संकेत मिलता है जिसकी मुख्य चिंता है: {primary_concern}। अतिरिक्त सहायक बनें और कोमलता से पेशेवर परामर्श को प्रोत्साहित करें।"
+                else:
+                    base_prompt += f"\n\nIMPORTANT: The user's recent analysis suggests {risk_level} risk level with primary concern: {primary_concern}. Be extra supportive and gently encourage professional consultation."
             
             if primary_concern and primary_concern != 'None detected':
-                base_prompt += f"\n\nThe user may be experiencing signs related to {primary_concern}. Tailor your response with appropriate sensitivity to this concern."
+                if language == 'hi':
+                    base_prompt += f"\n\nउपयोगकर्ता {primary_concern} से संबंधित संकेतों का अनुभव कर रहा हो सकता है। इस चिंता के लिए उचित संवेदनशीलता के साथ अपनी प्रतिक्रिया तैयार करें।"
+                else:
+                    base_prompt += f"\n\nThe user may be experiencing signs related to {primary_concern}. Tailor your response with appropriate sensitivity to this concern."
         
         if mood and mood.lower() != 'neutral':
-            base_prompt += f"\n\nThe user's current mood appears to be: {mood}. Acknowledge this appropriately in your response."
+            if language == 'hi':
+                base_prompt += f"\n\nउपयोगकर्ता का वर्तमान मूड प्रतीत होता है: {mood}। अपनी प्रतिक्रिया में इसे उचित रूप से स्वीकार करें।"
+            else:
+                base_prompt += f"\n\nThe user's current mood appears to be: {mood}. Acknowledge this appropriately in your response."
         
         return base_prompt
     
-    def _build_therapist_user_prompt(self, user_message: str, context: str, analysis_results: Optional[Dict]) -> str:
-        """Build user prompt with context"""
+    def _build_therapist_user_prompt(self, user_message: str, context: str, analysis_results: Optional[Dict], language: str) -> str:
+        """Build user prompt with context and language support"""
         prompt_parts = []
         
         if context:
-            prompt_parts.append(f"Recent conversation context:\n{context}\n")
+            if language == 'hi':
+                prompt_parts.append(f"हाल की बातचीत का संदर्भ:\n{context}\n")
+            else:
+                prompt_parts.append(f"Recent conversation context:\n{context}\n")
         
         if analysis_results:
             mood_info = analysis_results.get('current_mood', {})
             if mood_info:
-                prompt_parts.append(f"Current mood analysis: {mood_info.get('current_mood', 'Unknown')} (confidence: {mood_info.get('confidence', 0):.2f})")
+                if language == 'hi':
+                    prompt_parts.append(f"वर्तमान मूड विश्लेषण: {mood_info.get('current_mood', 'अज्ञात')} (आत्मविश्वास: {mood_info.get('confidence', 0):.2f})")
+                else:
+                    prompt_parts.append(f"Current mood analysis: {mood_info.get('current_mood', 'Unknown')} (confidence: {mood_info.get('confidence', 0):.2f})")
         
-        prompt_parts.append(f"User's current message: {user_message}")
-        
-        prompt_parts.append("\nPlease respond as a supportive therapist, acknowledging what the user has shared and helping them explore their feelings further. Keep your response concise but meaningful.")
+        if language == 'hi':
+            prompt_parts.append(f"उपयोगकर्ता का वर्तमान संदेश: {user_message}")
+            prompt_parts.append("\nकृपया एक सहायक थेरेपिस्ट के रूप में जवाब दें, जो उपयोगकर्ता ने साझा किया है उसे स्वीकार करते हुए और उन्हें अपनी भावनाओं को और समझने में मदद करते हुए। अपनी प्रतिक्रिया संक्षिप्त लेकिन अर्थपूर्ण रखें। हिंदी में जवाब दें।")
+        else:
+            prompt_parts.append(f"User's current message: {user_message}")
+            prompt_parts.append("\nPlease respond as a supportive therapist, acknowledging what the user has shared and helping them explore their feelings further. Keep your response concise but meaningful.")
         
         return "\n".join(prompt_parts)
     
-    def generate_crisis_response(self, user_message: str) -> str:
+    def detect_crisis_keywords(self, text: str) -> bool:
+        """Detect if text contains crisis keywords"""
+        crisis_keywords = [
+            'suicide', 'kill myself', 'end my life', 'want to die', 'better off dead',
+            'no point living', 'end it all', 'hurt myself', 'self harm', 'overdose',
+            'jump off', 'hanging', 'gun', 'pills', 'razor', 'cutting',
+            # Hindi crisis keywords
+            'आत्महत्या', 'खुद को मार', 'जीना नहीं चाहता', 'मर जाना चाहता', 'खुदकुशी'
+        ]
+        
+        text_lower = text.lower()
+        return any(keyword in text_lower for keyword in crisis_keywords)
+    
+    def generate_crisis_response(self, user_message: str, language: str = "en") -> str:
         """Generate response for crisis situations"""
         try:
             self._rate_limit()
             
-            system_prompt = """You are responding to someone who may be in a mental health crisis. Your response must:
+            if language == 'hi':
+                system_prompt = """आप किसी ऐसे व्यक्ति को जवाब दे रहे हैं जो मानसिक स्वास्थ्य संकट में हो सकता है। आपकी प्रतिक्रिया में होना चाहिए:
+
+1. तुरंत चिंता और देखभाल व्यक्त करना
+2. संकट संसाधन और हेल्पलाइन नंबर प्रदान करना
+3. तत्काल पेशेवर मदद के लिए दृढ़ता से प्रोत्साहित करना
+4. स्थिति को बदतर न बनाना
+5. प्रत्यक्ष लेकिन दयालु होना
+
+यह एक संकट प्रतिक्रिया है - सब कुछ के ऊपर सुरक्षा को प्राथमिकता दें।"""
+                
+                user_prompt = f"उपयोगकर्ता संदेश जो संभावित संकट का संकेत देता है: {user_message}\n\nसंसाधनों के साथ तत्काल, देखभाल करने वाली संकट प्रतिक्रिया प्रदान करें।"
+            else:
+                system_prompt = """You are responding to someone who may be in a mental health crisis. Your response must:
 
 1. Immediately express concern and care
 2. Provide crisis resources and hotline numbers
@@ -138,10 +197,10 @@ Guidelines:
 5. Be direct but compassionate
 
 This is a crisis response - prioritize safety over everything else."""
+                
+                user_prompt = f"User message indicating potential crisis: {user_message}\n\nProvide an immediate, caring crisis response with resources."
             
-            user_prompt = f"User message indicating potential crisis: {user_message}\n\nProvide an immediate, caring crisis response with resources."
-            
-            response = openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model=self.default_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -152,7 +211,15 @@ This is a crisis response - prioritize safety over everything else."""
             )
             
             # Add crisis resources to any AI response
-            crisis_resources = """
+            if language == 'hi':
+                crisis_resources = """
+
+🆘 तत्काल सहायता:
+• आपातकालीन सेवाएं: 112
+• राष्ट्रीय हेल्पलाइन: 9152987821
+• तत्काल खतरे के लिए, अपने निकटतम आपातकालीन कक्ष में जाएं"""
+            else:
+                crisis_resources = """
 
 🆘 IMMEDIATE HELP:
 • National Suicide Prevention Lifeline: 988
@@ -164,7 +231,17 @@ This is a crisis response - prioritize safety over everything else."""
             
         except Exception as e:
             logger.error(f"Crisis response generation failed: {str(e)}")
-            return """I'm very concerned about you. Please reach out for immediate help:
+            if language == 'hi':
+                return """मुझे आपकी बहुत चिंता है। कृपया तत्काल सहायता के लिए संपर्क करें:
+
+🆘 तत्काल सहायता:
+• आपातकालीन सेवाएं: 112
+• राष्ट्रीय हेल्पलाइन: 9152987821
+• तत्काल खतरे के लिए, अपने निकटतम आपातकालीन कक्ष में जाएं
+
+आपको अकेले इससे गुजरना नहीं है। ऐसे लोग हैं जो आपकी मदद करना चाहते हैं।"""
+            else:
+                return """I'm very concerned about you. Please reach out for immediate help:
 
 🆘 IMMEDIATE HELP:
 • National Suicide Prevention Lifeline: 988
@@ -173,17 +250,6 @@ This is a crisis response - prioritize safety over everything else."""
 • For immediate danger, go to your nearest emergency room
 
 You don't have to go through this alone. There are people who want to help you."""
-    
-    def detect_crisis_keywords(self, text: str) -> bool:
-        """Detect if text contains crisis keywords"""
-        crisis_keywords = [
-            'suicide', 'kill myself', 'end my life', 'want to die', 'better off dead',
-            'no point living', 'end it all', 'hurt myself', 'self harm', 'overdose',
-            'jump off', 'hanging', 'gun', 'pills', 'razor', 'cutting'
-        ]
-        
-        text_lower = text.lower()
-        return any(keyword in text_lower for keyword in crisis_keywords)
     
     def generate_initial_conversation_starter(self, analysis_results: Optional[Dict] = None) -> str:
         """Generate conversation starter based on analysis"""
@@ -208,7 +274,7 @@ Create a personalized, empathetic opening that:
 
 Keep it to 2-3 sentences maximum."""
                 
-                response = openai.ChatCompletion.create(
+                response = self.client.chat.completions.create(
                     model=self.default_model,
                     messages=[
                         {"role": "system", "content": "You are a warm, empathetic therapist starting a conversation."},

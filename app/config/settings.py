@@ -2,16 +2,18 @@ import os
 from pydantic_settings import BaseSettings
 from typing import Optional, List
 from dotenv import load_dotenv
+from pathlib import Path
 
-# Load .env file
-load_dotenv()
+# FIXED: Load .env from project root, not app directory
+env_path = Path(__file__).parent.parent.parent / ".env"  # Go up to project root
+load_dotenv(env_path, override=True)
 
 class Settings(BaseSettings):
-    # API Keys - FIXED
+    # API Keys
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     huggingface_token: Optional[str] = os.getenv("HUGGINGFACE_TOKEN")
     
-    # Rest of your settings...
+    # Rest of your settings remain the same...
     text_sentiment_model: str = "cardiffnlp/twitter-roberta-base-sentiment-latest"
     text_emotion_model: str = "j-hartmann/emotion-english-distilroberta-base"
     audio_emotion_model: str = "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
@@ -37,6 +39,6 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Debug output
-print(f"🔑 Loaded API key length: {len(settings.openai_api_key)}")
-print(f"🔑 API key starts with: {settings.openai_api_key[:10] if settings.openai_api_key else 'None'}")
+# Debug output (remove in production)
+print(f"🔑 API key loaded: {'✅ Yes' if settings.openai_api_key and len(settings.openai_api_key) > 50 else '❌ No'}")
+print(f"🔑 API key length: {len(settings.openai_api_key)}")

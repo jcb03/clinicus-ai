@@ -480,10 +480,9 @@ Keep the response warm, non-judgmental, and under 200 words. Avoid medical diagn
         return recommendations[:7]
     
     def determine_current_mood(self, analysis_results: Dict) -> Dict:
-        """FIXED: Determine current mood with self_harm override"""
         try:
-            # CRITICAL: Check for self-harm first
-            text_analysis = analysis_results.get('individual_analyses', {}).get('text_analysis', {})
+            individual_analyses = analysis_results.get('individual_analyses', {})
+            text_analysis = individual_analyses.get('text_analysis', {})
             if text_analysis:
                 mental_health_indicators = text_analysis.get('mental_health_indicators', {})
                 if 'self_harm' in mental_health_indicators:
@@ -494,32 +493,75 @@ Keep the response warm, non-judgmental, and under 200 words. Avoid medical diagn
                         'mood_description': 'CRISIS STATE - Immediate help needed'
                     }
             
-            # Regular mood determination
+                # FIXED: Get emotions directly from text analysis
+                emotions = text_analysis.get('emotions', {})
+                dominant_emotion = emotions.get('dominant_emotion', 'neutral')
+                confidence = emotions.get('dominant_score', 0.5)
+            
+                # ENHANCED: Also check sentiment for mood override
+                sentiment = text_analysis.get('sentiment', {})
+            
+                # If very negative sentiment, override with sad mood
+                if sentiment.get('dominant') == 'negative' and sentiment.get('confidence', 0) > 0.7:
+                    dominant_emotion = 'sadness'
+                    confidence = sentiment.get('confidence', 0.7)
+            
+                # ENHANCED: Check for explicit mood words in text
+                original_text = text_analysis.get('original_text', '').lower()
+                explicit_mood_words = {
+                    'sad': 'sadness', 'very sad': 'sadness', 'feeling sad': 'sadness',
+                    'happy': 'joy', 'excited': 'joy', 'angry': 'anger',
+                    'anxious': 'fear', 'worried': 'fear', 'scared': 'fear',
+                    'stressed': 'anger', 'frustrated': 'anger'
+                }
+            
+                for word, emotion in explicit_mood_words.items():
+                    if word in original_text:
+                        dominant_emotion = emotion
+                        confidence = max(confidence, 0.8)  # High confidence for explicit words
+                        break
+            
+                # Map emotions to mood categories
+                mood_mapping = {
+                    'sadness': 'Sad', 'sad': 'Sad',
+                    'joy': 'Happy', 'happiness': 'Happy', 'happy': 'Happy',
+                    'anger': 'Angry', 'angry': 'Angry',
+                    'fear': 'Anxious', 'anxiety': 'Anxious', 'anxious': 'Anxious',
+                    'surprise': 'Surprised', 'surprised': 'Surprised',
+                    'disgust': 'Disgusted',
+                    'neutral': 'Neutral', 'calm': 'Calm',
+                    'excited': 'Excited', 'tired': 'Tired'
+                }
+            
+                mood = mood_mapping.get(dominant_emotion.lower(), 'Neutral')
+            
+                return {
+                    'current_mood': mood,
+                    'confidence': confidence,
+                    'dominant_emotion': dominant_emotion,
+                    'mood_description': self._get_mood_description(mood, confidence)
+                }
+        
+            # Fallback to combined emotion analysis
             emotion_analysis = self.combine_emotion_scores(analysis_results)
             dominant_emotion = emotion_analysis['dominant_emotion']
             confidence = emotion_analysis['confidence']
-            
-            # Map emotions to mood categories
+        
             mood_mapping = {
-                'joy': 'Happy', 'happiness': 'Happy', 'happy': 'Happy',
-                'sadness': 'Sad', 'sad': 'Sad',
-                'anger': 'Angry', 'angry': 'Angry',
-                'fear': 'Anxious', 'anxiety': 'Anxious',
-                'surprise': 'Surprised', 'surprised': 'Surprised',
-                'disgust': 'Disgusted',
-                'neutral': 'Neutral', 'calm': 'Calm',
-                'excited': 'Excited', 'tired': 'Tired'
+                'sadness': 'Sad', 'joy': 'Happy', 'anger': 'Angry',
+                'fear': 'Anxious', 'surprise': 'Surprised', 'disgust': 'Disgusted',
+                'neutral': 'Neutral', 'calm': 'Calm'
             }
-            
+        
             mood = mood_mapping.get(dominant_emotion.lower(), 'Neutral')
-            
+        
             return {
                 'current_mood': mood,
                 'confidence': confidence,
                 'dominant_emotion': dominant_emotion,
                 'mood_description': self._get_mood_description(mood, confidence)
             }
-            
+        
         except Exception as e:
             logger.error(f"Mood determination failed: {str(e)}")
             return {
@@ -528,6 +570,8 @@ Keep the response warm, non-judgmental, and under 200 words. Avoid medical diagn
                 'dominant_emotion': 'neutral',
                 'mood_description': 'Unable to determine mood'
             }
+
+                    
     
     def _get_mood_description(self, mood: str, confidence: float) -> str:
         """Get description for current mood"""
